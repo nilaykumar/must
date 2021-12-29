@@ -3,52 +3,66 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
+extern crate clap;
 extern crate home;
+
+use clap::{App, Arg};
+
+mod task;
+use task::Task;
+
+use crate::task::add_to_task_list;
+
+// application version
+const VERSION: &str = "0.1";
 
 // the data folder will be contained in the user's home folder
 const DATA_FOLDER: &str = "must/";
 // the text file containing our todo list
-const DATA_FILE: &str = "must";
+const DATA_FILE: &str = "todo.txt";
 // the header of the todo list data file
 const DATA_HEADER: &str = "# DO NOT MODIFY THIS FILE MANUALLY\n";
 
-enum Completion {
-    Done,
-    InProgress,
-    Todo,
-}
-
-struct Task {
-    id: usize,
-    task: String,
-    completion: Completion,
-}
-
-struct TaskList {
-    name: String,
-    tasks: Vec<Task>,
-}
-
 fn main() {
+    // handle command line arguments
+    let matches = App::new("must")
+        .version(VERSION)
+        .author("Nilay K. <nilaykumar@tutanota.com>")
+        .about("A simple CLI todo application")
+        .arg(
+            Arg::with_name("add")
+                .short("a")
+                .long("add")
+                .help("Adds a task to the current task list")
+                .takes_value(true)
+                .empty_values(false),
+        )
+        .get_matches();
+
     // get data file handle
     let mut file: File = get_data_file();
 
     // read data file
     let contents: String = get_string_from_file(&mut file);
 
-    // load task lists from string
-    let task_lists: Vec<TaskList> = string_as_task_lists(contents);
+    // load task list from string
+    let mut task_list: Vec<Task> = string_as_task_list(contents);
 
-    for task_list in task_lists {
-        println!("= {}", task_list.name);
-        for task in task_list.tasks {
-            println!(
-                "\t {} {} {}",
-                task.id,
-                completion_as_string(task.completion),
-                task.task
-            );
-        }
+    println!("Found {} tasks.", task_list.len());
+    for task_string in &task_list {
+        println!("{}", task_string.task);
+    }
+
+    // adding a new task
+    if let Some(task_string) = matches.value_of("add") {
+        println!("Adding task: {}", task_string);
+
+        add_to_task_list(&mut task_list, task_string);
+    }
+
+    println!("Found {} tasks.", task_list.len());
+    for task_string in &task_list {
+        println!("{}", task_string.task);
     }
 }
 
@@ -68,7 +82,7 @@ fn get_data_file() -> File {
 
     // if a todo list file doesn't exist, create it
     let mut file_options = OpenOptions::new();
-    file_options.read(true).append(true);
+    file_options.read(true).write(true);
     let mut file: File;
     match file_options.open(file_path) {
         Err(e) => {
@@ -100,62 +114,33 @@ fn get_string_from_file(file: &mut File) -> String {
     contents
 }
 
-fn string_as_task_lists(contents: String) -> Vec<TaskList> {
-    let mut task_lists: Vec<TaskList> = Vec::new();
-    // task lists are written "= MyTaskList"
-    let v = contents.split("=").collect::<Vec<&str>>();
-    let mut it = v.iter();
-    // ignore everything before the first task list
-    it.next();
+/// TODO
+fn write_string_to_file() {}
 
-    for list_string in it {
-        if list_string.len() == 0 {
+fn string_as_task_list(contents: String) -> Vec<Task> {
+    let mut task_list: Vec<Task> = Vec::new();
+    let list_data = contents.split("\n").collect::<Vec<&str>>();
+    for task_string in list_data {
+        if task_string.is_empty() {
             continue;
-        };
-        let list_data = list_string.split("\n").collect::<Vec<&str>>();
-        let mut list = TaskList {
-            name: list_data[0].trim().to_string(),
-            tasks: Vec::new(),
-        };
-        for task_string in list_data.get(1..).unwrap() {
-            if task_string.len() == 0 {
-                continue;
-            }
-            let task_data = task_string.split(" ").collect::<Vec<&str>>();
-            let task = Task {
-                id: task_data[0]
-                    .parse()
-                    .expect(&format!("Could not parse {:?} as an integer", task_data[0])),
-                completion: string_as_completion(task_data[1]).expect(&format!(
-                    "Could not parse {:?} as a Completion",
-                    task_data[1]
-                )),
-                task: task_data
-                    .get(2..)
-                    .expect(&format!("Could not parse task from {:?}", task_data))
-                    .iter()
-                    .fold(String::from(""), |acc, x| acc + x),
-            };
-            list.tasks.push(task)
         }
-        task_lists.push(list);
+        // if the line starts with a #, ignore it
+        if task_string.trim().starts_with("#") {
+            continue;
+        }
+        // otherwise, create a task using the id and task string
+        let task_data = task_string.split(" ").collect::<Vec<&str>>();
+        let task = Task {
+            id: task_data[0]
+                .parse()
+                .expect(&format!("Could not parse {:?} as an integer", task_data[0])),
+            task: task_data
+                .get(1..)
+                .expect(&format!("Could not parse task from {:?}", task_data))
+                .iter()
+                .fold(String::from(""), |acc, x| acc + x),
+        };
+        task_list.push(task);
     }
-    task_lists
-}
-
-fn string_as_completion(s: &str) -> Result<Completion, ()> {
-    match s.to_lowercase().as_str() {
-        "todo" => Ok(Completion::Todo),
-        "inprogress" => Ok(Completion::InProgress),
-        "done" => Ok(Completion::Done),
-        _ => Err(()),
-    }
-}
-
-fn completion_as_string(completion: Completion) -> &'static str {
-    match completion {
-        Completion::Done => "done",
-        Completion::InProgress => "inprogress",
-        Completion::Todo => "todo",
-    }
+    task_list
 }
