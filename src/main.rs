@@ -27,7 +27,7 @@ fn main() {
     // handle command line arguments
     let matches = App::new("must")
         .version(VERSION)
-        .author("Nilay K. <nilaykumar@tutanota.com>")
+        .author("Nilay Kumar <nilaykumar@tutanota.com>")
         .about("A simple CLI todo application")
         .arg(
             Arg::with_name("add")
@@ -48,7 +48,7 @@ fn main() {
     // load task list from string
     let mut task_list: Vec<Task> = string_as_task_list(contents);
 
-    println!("Found {} tasks.", task_list.len());
+    println!("found {} tasks.", task_list.len());
     for task_string in &task_list {
         println!("{}", task_string.task);
     }
@@ -60,10 +60,15 @@ fn main() {
         add_to_task_list(&mut task_list, task_string);
     }
 
-    println!("Found {} tasks.", task_list.len());
-    for task_string in &task_list {
-        println!("{}", task_string.task);
-    }
+    println!(
+        "Writing modified task list:\n{}",
+        &task_list_as_string(&task_list)
+    );
+
+    // FIXME figure out why the generated list is wrong
+
+    // write modified task list to file
+    write_string_to_file(&mut file, &task_list_as_string(&task_list));
 }
 
 fn get_data_file() -> File {
@@ -114,8 +119,12 @@ fn get_string_from_file(file: &mut File) -> String {
     contents
 }
 
-/// TODO
-fn write_string_to_file() {}
+fn write_string_to_file(file: &mut File, s: &String) {
+    file.seek(SeekFrom::Start(0)).unwrap();
+    file.write_all(s.as_bytes()).unwrap_or_else(|error| {
+        panic!("Could not write to file: {:?}", error);
+    });
+}
 
 fn string_as_task_list(contents: String) -> Vec<Task> {
     let mut task_list: Vec<Task> = Vec::new();
@@ -143,4 +152,12 @@ fn string_as_task_list(contents: String) -> Vec<Task> {
         task_list.push(task);
     }
     task_list
+}
+
+fn task_list_as_string(task_list: &Vec<Task>) -> String {
+    let mut list_string = String::from(DATA_HEADER);
+    for task in task_list {
+        list_string += &format!("{} {}\n", task.id, task.task);
+    }
+    list_string
 }
